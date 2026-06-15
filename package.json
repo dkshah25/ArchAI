@@ -1,0 +1,37 @@
+{
+  "name": "archai",
+  "version": "1.0.0",
+  "description": "AI-powered Software Architect that transforms any GitHub repository into an interactive architecture intelligence system",
+  "keywords": [
+    "architecture",
+    "ai",
+    "code-analysis",
+    "dependency-graph",
+    "software-architect",
+    "developer-tools",
+    "gemini",
+    "react-flow"
+  ],
+  "homepage": "https://github.com/dharmitshah/archai#readme",
+  "bugs": {
+    "url": "https://github.com/dharmitshah/archai/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dharmitshah/archai.git"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "Dharmit Shah",
+    "url": "https://github.com/dharmitshah"
+  },
+  "scripts": {
+    "dev:backend": "cd backend && venv/Scripts/python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload",
+    "dev:frontend": "cd frontend && npm run dev",
+    "install:backend": "cd backend && python -m venv venv && venv/Scripts/pip install -r requirements.txt",
+    "install:frontend": "cd frontend && npm install",
+    "build:frontend": "cd frontend && npm run build",
+    "test:backend": "cd backend && python -m pytest tests/ -v",
+    "verify": "cd backend && python verify.py"
+  }
+}
