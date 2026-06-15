@@ -46,9 +46,12 @@ ignore = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=. --cov-report=term-missing --cov-report=html --cov-omit=venv/*,tests/*"
+addopts = "-v --tb=short"
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 
 [tool.coverage.run]
 omit = ["venv/*", "tests/*", "verify.py"]
+
+[tool.coverage.report]
+show_missing = true
