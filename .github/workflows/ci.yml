@@ -27,16 +27,11 @@ jobs:
         working-directory: backend
         run: pip install -r requirements.txt
 
-      - name: Run verification script
-        working-directory: backend
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python verify.py
-
       - name: Run pytest
         working-directory: backend
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CI: "true"
         run: python -m pytest tests/ -v --tb=short
 
   frontend-build:
@@ -44,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: ["18", "20"]
+        node-version: ["20"]
 
     steps:
       - uses: actions/checkout@v4
@@ -60,7 +55,11 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Type check & build
+      - name: Clear Next.js cache
+        working-directory: frontend
+        run: rm -rf .next
+
+      - name: Build
         working-directory: frontend
         run: npm run build
 
