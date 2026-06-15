@@ -78,6 +78,11 @@ class AIService:
 
         formatted_history = "\n".join([f"{msg['role']}: {msg['content']}" for msg in chat_history])
         
+        if graph_context:
+            graph_section = "COMPILER-ACCURATE STATIC KNOWLEDGE GRAPH FACTS:\n" + graph_context + "\nIMPORTANT: You MUST explain this static code structure path accurately and mention these specific files in your explanation."
+        else:
+            graph_section = ""
+        
         prompt = f"""
         You are ArchAI, an AI Software Architect.
         Answer user questions about the following codebase.
@@ -85,7 +90,7 @@ class AIService:
         Codebase structure:
         {json.dumps({"files": files_list, "components": component_types}, indent=2)}
         
-        {f"COMPILER-ACCURATE STATIC KNOWLEDGE GRAPH FACTS:\n{graph_context}\nIMPORTANT: You MUST explain this static code structure path accurately and mention these specific files in your explanation." if graph_context else ""}
+        {graph_section}
         
         Chat History:
         {formatted_history}
@@ -660,6 +665,9 @@ sequenceDiagram
         ]
         
         # Build Markdown report
+        has_cycles = any('warn_cycle' in w['id'] for w in warnings)
+        cycle_text = "Found circular import paths." if has_cycles else "Clean module imports hierarchy."
+        
         report = f"""# ArchAI Architecture Health Report
 
 ## Executive Summary
@@ -675,7 +683,7 @@ The current implementation scores **{static_scores.get('maintainability', 65)}/1
 - **Documentation ({static_scores.get('documentation', 40)}/100)**: Basic inline documentation. Needs API level documentation.
 
 ## Structural Debt & Risks
-- **Cycle Conflicts**: {f"Found circular import paths." if any('warn_cycle' in w['id'] for w in warnings) else "Clean module imports hierarchy."}
+- **Cycle Conflicts**: {cycle_text}
 - **File Bloat**: Detected oversized components requiring decomposition.
 
 ## Recommendations & Refactoring Roadmap
@@ -757,6 +765,10 @@ The current implementation scores **{static_scores.get('maintainability', 65)}/1
             winner = "Draw"
             winner_reason = "Both repositories demonstrate similar levels of modularity and scaling indicators, with slight trade-offs between documentation quality and test density."
             
+        a_cycle_text = "Contains circular dependencies." if len(repo_a_data.get('warnings', [])) > 0 else "Demonstrates sound directional coupling."
+        b_warn_count = len(repo_b_data.get('warnings', []))
+        b_warn_text = f"Warning count stands at {b_warn_count} items." if b_warn_count > 0 else "No modularity cycle alarms active."
+        
         comparison_report = f"""# Architecture Comparison Report: {repo_a_name} vs {repo_b_name}
 
 ## 📊 High-Level Metrics Comparison
@@ -775,8 +787,8 @@ The current implementation scores **{static_scores.get('maintainability', 65)}/1
 ## 🔍 Structural Trade-Offs
 
 ### 1. Modularity & Decoupling
-- **{repo_a_name}**: Relies heavily on file import paths. {f"Contains circular dependencies." if len(repo_a_data.get('warnings', [])) > 0 else "Demonstrates sound directional coupling."}
-- **{repo_b_name}**: Configured with decoupled component types. {f"Warning count stands at {len(repo_b_data.get('warnings', []))} items." if len(repo_b_data.get('warnings', [])) > 0 else "No modularity cycle alarms active."}
+- **{repo_a_name}**: Relies heavily on file import paths. {a_cycle_text}
+- **{repo_b_name}**: Configured with decoupled component types. {b_warn_text}
 
 ### 2. Testing & Stability Maturity
 - **{repo_a_name}** testability is scored at **{scores_a.get('testability', 50)}/100**.
