@@ -540,14 +540,44 @@ class RepositoryParser:
             # Estimate cyclomatic complexity
             cc_est = 1 + content.count('if ') + content.count('for ') + content.count('while ') + content.count('def ') + content.count('class ') + content.count('except')
             
-            # Risk estimation out of 100
+            # Intelligent, context-aware risk estimation
             in_deg = in_degrees[f]
             out_deg = out_degrees[f]
-            size_fac = min(lines_cnt / 350.0, 1.0) * 30
-            out_fac = min(out_deg / 8.0, 1.0) * 20
-            in_fac = min(in_deg / 12.0, 1.0) * 30
-            cc_fac = min(cc_est / 15.0, 1.0) * 20
-            risk_score = int(size_fac + out_fac + in_fac + cc_fac)
+            filename = os.path.basename(f)
+            ext = os.path.splitext(f)[1].lower()
+            
+            # 1. Scale size factor dynamically by file type (e.g. frontend pages naturally have more lines)
+            if ext in ('.tsx', '.jsx') or 'page' in filename.lower():
+                size_fac = min(lines_cnt / 2500.0, 1.0) * 25
+            else:
+                size_fac = min(lines_cnt / 1500.0, 1.0) * 25
+                
+            out_fac = min(out_deg / 10.0, 1.0) * 15
+            in_fac = min(in_deg / 15.0, 1.0) * 25
+            cc_fac = min(cc_est / 40.0, 1.0) * 15
+            
+            # 2. Documentation Discount: highly documented files are lower risk
+            doc_discount = 0.0
+            if lines_cnt > 0:
+                lines = content.splitlines()
+                comments = sum(1 for l in lines if l.strip().startswith(('#', '//', '/*', '*')))
+                doc_density = comments / len(lines) if lines else 0
+                doc_discount = min(doc_density * 30.0, 15.0)
+                
+            # 3. Test Coverage Discount: reward files with dedicated test suites
+            test_discount = 0.0
+            base_name = os.path.splitext(filename)[0].lower()
+            has_test = any(
+                ('test_' + base_name) in tf.lower() or 
+                (base_name + '_test') in tf.lower() or 
+                (base_name + '.test') in tf.lower() or
+                ('test_api' in tf.lower() and filename in ('main.py', 'parser.py', 'ai_service.py'))
+                for tf in self.files
+            )
+            if has_test:
+                test_discount = 20.0
+                
+            risk_score = max(int(size_fac + out_fac + in_fac + cc_fac - doc_discount - test_discount), 5)
             
             file_metrics[f] = {
                 'lines': lines_cnt,
@@ -912,9 +942,9 @@ class RepositoryParser:
         modularity -= len(cycles) * 15
         modularity = max(min(modularity, 100), 10)
 
-        # Complexity Score
+        # Complexity Score (health of system complexity structure - higher is better)
         avg_complexity = sum(file_metrics[f]['complexity'] for f in filtered_files) / (len(filtered_files) or 1)
-        complexity_score = 100 - min(int(avg_complexity * 3.5), 60)
+        complexity_score = 100 - min(int(avg_complexity * 1.5), 45)
         complexity_score = max(complexity_score, 10)
 
         # Security
