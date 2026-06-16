@@ -247,7 +247,7 @@ def analyze_repo(req: AnalyzeRequest, background_tasks: BackgroundTasks):
             # Insert entities
             for ent in entities:
                 cursor.execute(
-                    "INSERT INTO graph_entities (id, repo_id, name, type, file_path, metadata_json) VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT OR REPLACE INTO graph_entities (id, repo_id, name, type, file_path, metadata_json) VALUES (?, ?, ?, ?, ?, ?)",
                     (ent["id"], repo_id, ent["name"], ent["type"], ent["file_path"], json.dumps(ent["metadata"]))
                 )
                 
@@ -255,7 +255,7 @@ def analyze_repo(req: AnalyzeRequest, background_tasks: BackgroundTasks):
             for rel in relations:
                 rel_id = str(uuid.uuid4())
                 cursor.execute(
-                    "INSERT INTO graph_relations (id, repo_id, source_id, target_id, type) VALUES (?, ?, ?, ?, ?)",
+                    "INSERT OR REPLACE INTO graph_relations (id, repo_id, source_id, target_id, type) VALUES (?, ?, ?, ?, ?)",
                     (rel_id, repo_id, rel["source"], rel["target"], rel["type"])
                 )
         except Exception as graph_err:

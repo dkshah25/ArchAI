@@ -1298,7 +1298,14 @@ class RepositoryParser:
                                     "type": "publishes"
                                 })
 
-        # 3. Deduplicate relationships
+        # 3. Deduplicate entities & relationships
+        unique_entities = []
+        seen_entity_ids = set()
+        for ent in entities:
+            if ent["id"] not in seen_entity_ids:
+                seen_entity_ids.add(ent["id"])
+                unique_entities.append(ent)
+
         unique_relations = []
         seen_rels = set()
         for rel in relations:
@@ -1307,7 +1314,7 @@ class RepositoryParser:
                 seen_rels.add(rel_key)
                 unique_relations.append(rel)
                 
-        return entities, unique_relations
+        return unique_entities, unique_relations
 
     def find_graph_path(self, entities: List[Dict[str, Any]], relations: List[Dict[str, Any]], 
                         start_type: str, end_type: str) -> List[List[Dict[str, Any]]]:
