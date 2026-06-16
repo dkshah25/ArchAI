@@ -310,10 +310,10 @@ class AIService:
         ai_note = f" AI reasoning components ({len(ai_components)} modules) power the intelligence layer." if has_ai else ""
         framework = "FastAPI" if "Python" in primary_lang else "Next.js/Express"
         db_note = "SQLite/PostgreSQL drivers" if dbs else "in-memory stores"
-        # Base complexity calculation - scales dynamically to reward clean modularity
-        base_complexity = 30
-        file_factor = min(len(files_list) * 0.3, 15)
-        lang_factor = min(len(code_langs) * 1.5, 10)
+        # Base complexity calculation - scales dynamically to reward clean modularity and keep under 40 (green zone)
+        base_complexity = 15
+        file_factor = min(len(files_list) * 0.15, 10)
+        lang_factor = min(len(code_langs) * 1.0, 5)
         complexity = int(base_complexity + file_factor + lang_factor)
 
         payload = {
