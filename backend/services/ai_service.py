@@ -310,7 +310,11 @@ class AIService:
         ai_note = f" AI reasoning components ({len(ai_components)} modules) power the intelligence layer." if has_ai else ""
         framework = "FastAPI" if "Python" in primary_lang else "Next.js/Express"
         db_note = "SQLite/PostgreSQL drivers" if dbs else "in-memory stores"
-        complexity = min(40 + len(files_list) * 0.5 + len(code_langs) * 3, 95)
+        # Base complexity calculation - scales dynamically to reward clean modularity
+        base_complexity = 30
+        file_factor = min(len(files_list) * 0.3, 15)
+        lang_factor = min(len(code_langs) * 1.5, 10)
+        complexity = int(base_complexity + file_factor + lang_factor)
 
         payload = {
             "purpose": f"This system is a {system_type} designed to {purpose_detail}.",
@@ -322,7 +326,7 @@ class AIService:
             "data_flow": "Incoming HTTP requests hit API routes, which authenticate the headers before delegating tasks to controllers. Controllers invoke business service functions, executing database persistence actions before returning structured JSON.",
             "dependencies": f"Built with {primary_lang} and {framework}, database connections ({db_note}), and environment runtime settings.",
             "risks": "Lack of caching at relational databases may lead to scaling load constraints under high concurrency. Tightly-coupled modules should be decoupled into standard repositories.",
-            "complexity_score": int(complexity)
+            "complexity_score": complexity
         }
         return json.dumps(payload)
 
