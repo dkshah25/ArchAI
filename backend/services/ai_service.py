@@ -269,22 +269,60 @@ class AIService:
     # ==================== MOCK FALLBACK IMPLEMENTATIONS ====================
 
     def _mock_summary(self, files_list: List[str], component_types: Dict[str, str], stats: Dict[str, Any]) -> str:
-        # Detect primary technology stack
+        # Detect primary technology stack -- exclude non-code languages from detection
         langs = stats.get("languages", {})
-        primary_lang = max(langs.keys(), key=lambda k: langs[k]) if langs else "TypeScript"
-        
-        # Categorize
-        apis = [f for f, t in component_types.items() if t == 'API']
-        services = [f for f, t in component_types.items() if t == 'Service']
-        dbs = [f for f, t in component_types.items() if t in ('Database', 'Model')]
-        
+        code_langs = {k: v for k, v in langs.items() if k not in ("Markdown", "YAML", "JSON", "Shell", "Other")}
+        if code_langs:
+            primary_lang = max(code_langs.keys(), key=lambda k: code_langs[k])
+        elif langs:
+            primary_lang = max(langs.keys(), key=lambda k: langs[k])
+        else:
+            primary_lang = "TypeScript"
+
+        # Categorize components
+        apis = [f for f, t in component_types.items() if t == "API"]
+        services = [f for f, t in component_types.items() if t == "Service"]
+        dbs = [f for f, t in component_types.items() if t in ("Database", "Model")]
+        ai_components = [f for f, t in component_types.items() if t == "AI Component"]
+
+        # Detect system type from file patterns
+        has_ai = len(ai_components) > 0 or any(
+            any(kw in f.lower() for kw in ("ai", "llm", "gemini", "openai", "ai_service"))
+            for f in files_list)
+        has_frontend = any(
+            f.endswith((".tsx", ".jsx")) or "page" in f.lower() or "component" in f.lower()
+            for f in files_list)
+
+        # Build accurate system purpose
+        if has_ai and has_frontend:
+            system_type = "full-stack AI-powered developer tool"
+            purpose_detail = "analyzes codebases, generates architecture graphs, and provides AI-driven insights via a conversational interface"
+        elif has_ai:
+            system_type = f"AI-powered {primary_lang} backend service"
+            purpose_detail = "processes requests through an AI reasoning layer, serving structured analysis results to clients"
+        elif has_frontend:
+            system_type = f"full-stack {primary_lang} web application"
+            purpose_detail = "manages client-server interactions with a REST API backend and interactive frontend interface"
+        else:
+            system_type = f"modular {primary_lang}-based REST API service"
+            purpose_detail = "exposes structured HTTP endpoints for client data operations and business logic execution"
+
+        ai_note = f" AI reasoning components ({len(ai_components)} modules) power the intelligence layer." if has_ai else ""
+        framework = "FastAPI" if "Python" in primary_lang else "Next.js/Express"
+        db_note = "SQLite/PostgreSQL drivers" if dbs else "in-memory stores"
+        complexity = min(40 + len(files_list) * 0.5 + len(code_langs) * 3, 95)
+
         payload = {
-            "purpose": f"This system is a modular {primary_lang}-based web service designed to manage backend operations, exposing endpoints for client request execution and coordinating persistence schemas.",
-            "architecture": f"The codebase implements a layered architecture pattern separating routing entry controllers ({len(apis)} modules) from core business logic layers ({len(services)} services) and data model entities ({len(dbs)} schemas).",
+            "purpose": f"This system is a {system_type} designed to {purpose_detail}.",
+            "architecture": (
+                f"The codebase implements a layered architecture pattern separating routing entry controllers "
+                f"({len(apis)} modules) from core business logic layers ({len(services)} services) and data "
+                f"model entities ({len(dbs)} schemas).{ai_note}"
+            ),
             "data_flow": "Incoming HTTP requests hit API routes, which authenticate the headers before delegating tasks to controllers. Controllers invoke business service functions, executing database persistence actions before returning structured JSON.",
-            "dependencies": "Uses standard web framework libraries (FastAPI/Express), database connections (SQLite/PostgreSQL drivers), and environment runtime settings.",
+            "dependencies": f"Built with {primary_lang} and {framework}, database connections ({db_note}), and environment runtime settings.",
             "risks": "Lack of caching at relational databases may lead to scaling load constraints under high concurrency. Tightly-coupled modules should be decoupled into standard repositories.",
-            "complexity_score": 68
+            "complexity_score": int(complexity)
         }
         return json.dumps(payload)
 

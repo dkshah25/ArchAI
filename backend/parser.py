@@ -20,6 +20,27 @@ CODE_EXTS = {
     '.py', '.js', '.jsx', '.ts', '.tsx', '.go', '.java', '.cpp', '.c', '.cs', '.sql', '.sh'
 }
 
+# Config/tooling files that are never "imported" as modules — exempt from orphan warnings
+CONFIG_FILENAMES = {
+    'tailwind.config.ts', 'tailwind.config.js', 'postcss.config.js', 'postcss.config.cjs',
+    'next.config.js', 'next.config.ts', 'next.config.mjs',
+    'vite.config.ts', 'vite.config.js', 'webpack.config.js', 'rollup.config.js',
+    'jest.config.js', 'jest.config.ts', 'babel.config.js', '.babelrc',
+    'eslint.config.js', '.eslintrc.js', '.eslintrc.ts',
+    'prettier.config.js', '.prettierrc.js',
+    'tsconfig.json', 'jsconfig.json',
+    'schema.sql', 'init.sql', 'migrations.sql',
+    'Makefile', 'Dockerfile', 'docker-compose.yml', 'docker-compose.yaml',
+    'verify.py', 'setup.py', 'setup.cfg',
+    'datasets.py',  # standalone scripts
+}
+
+# Suffixes/patterns that indicate standalone scripts (not imported modules)
+STANDALONE_PATTERNS = {
+    'datasets', 'seed', 'migrate', 'setup', 'verify', 'fixture', 'conftest',
+    'manage', 'cli', 'script', 'bootstrap',
+}
+
 class RepositoryParser:
     def __init__(self, repo_path: str):
         self.repo_path = os.path.abspath(repo_path)
@@ -49,11 +70,12 @@ class RepositoryParser:
                     self.files.append(rel_path)
                     self.file_contents[rel_path] = content
                     
-                    # Update stats
+                    # Update stats — only count CODE files for language distribution
                     self.stats["total_files"] += 1
                     self.stats["total_lines"] += len(content.splitlines())
-                    lang = self._detect_language(rel_path)
-                    self.stats["languages"][lang] = self.stats["languages"].get(lang, 0) + 1
+                    if ext.lower() in CODE_EXTS:
+                        lang = self._detect_language(rel_path)
+                        self.stats["languages"][lang] = self.stats["languages"].get(lang, 0) + 1
                 except Exception as e:
                     print(f"Error reading file {rel_path}: {e}")
 
@@ -212,33 +234,77 @@ class RepositoryParser:
         self._resolve_imports(path, raw_imports)
 
     def _resolve_imports(self, path: str, imported_modules: List[str]):
-        """Resolves module import paths back to internal workspace files."""
+        """Resolves module import paths back to internal workspace files.
+        
+        Handles:
+        - Relative imports: './foo', '../bar'
+        - Python dotted imports: 'services.ai_service', 'backend.utils'
+        - ES module paths: '@/components/foo', 'components/foo'
+        - Partial-name matching as fallback
+        """
         current_dir = os.path.dirname(path)
         
         for module in imported_modules:
             module = module.strip()
             if not module or module.startswith('http://') or module.startswith('https://'):
                 continue
-                
+            
+            # Skip obvious third-party packages
+            if module.startswith('@') and '/' not in module[1:]:
+                continue  # scoped package with no path e.g. @babel
+
+            matched = False
+
+            # 1. Relative imports (start with '.' or '@/')
             if module.startswith('.'):
                 resolved_rel = os.path.normpath(os.path.join(current_dir, module)).replace('\\', '/')
-                matched = False
                 for f in self.files:
-                    if f.startswith(resolved_rel) or os.path.splitext(f)[0] == resolved_rel:
+                    f_no_ext = os.path.splitext(f)[0]
+                    if f_no_ext == resolved_rel or f.startswith(resolved_rel + '/index') or f.startswith(resolved_rel + '/main'):
                         self.dependencies[path].append(f)
                         matched = True
                         break
-                if not matched:
-                    for f in self.files:
-                        if f.startswith(resolved_rel + '/index') or f.startswith(resolved_rel + '/main'):
-                            self.dependencies[path].append(f)
-                            break
-            else:
+
+            # 2. Python-style dotted module: 'services.ai_service' -> try as path segment
+            elif '.' in module and not module.endswith('.py'):
+                # Convert dots to path separators: services.ai_service -> services/ai_service
+                as_path = module.replace('.', '/')
                 for f in self.files:
                     f_no_ext = os.path.splitext(f)[0]
-                    if f_no_ext.endswith(module) or module in f:
+                    # Match exact tail: backend/services/ai_service -> ends with services/ai_service
+                    if f_no_ext.endswith(as_path) or f_no_ext == as_path:
                         self.dependencies[path].append(f)
+                        matched = True
                         break
+                # Also try just the last part (leaf module name)
+                if not matched:
+                    leaf = module.split('.')[-1]
+                    for f in self.files:
+                        f_no_ext = os.path.splitext(f)[0]
+                        if os.path.basename(f_no_ext) == leaf:
+                            self.dependencies[path].append(f)
+                            matched = True
+                            break
+
+            # 3. Path-like imports: 'components/Button', '@/lib/utils'
+            else:
+                clean = module.lstrip('@').lstrip('/')
+                for f in self.files:
+                    f_no_ext = os.path.splitext(f)[0]
+                    # Exact tail match
+                    if f_no_ext.endswith(clean) or f_no_ext.endswith('/' + clean):
+                        self.dependencies[path].append(f)
+                        matched = True
+                        break
+                # Fallback: basename match
+                if not matched:
+                    leaf = clean.split('/')[-1]
+                    for f in self.files:
+                        f_no_ext = os.path.splitext(f)[0]
+                        if os.path.basename(f_no_ext) == leaf:
+                            self.dependencies[path].append(f)
+                            matched = True
+                            break
 
         self.dependencies[path] = list(set(self.dependencies[path]))
 
@@ -692,12 +758,27 @@ class RepositoryParser:
                     "files": cyc[:-1]
                 })
 
-        # Unused modules
+        # Unused modules / orphans
         for f in filtered_files:
-            # Skip primary launch modules
+            # Skip primary launch modules and well-known config/tooling files
             filename = os.path.basename(f)
+            filename_lower = filename.lower()
+            
             if filename in ('main.py', 'app.py', 'index.js', 'page.tsx', 'layout.tsx', 'Dockerfile'):
                 continue
+            # Skip config and standalone script files — these are never "imported"
+            if filename in CONFIG_FILENAMES:
+                continue
+            if any(pat in filename_lower.replace('.py', '').replace('.js', '').replace('.ts', '') 
+                   for pat in STANDALONE_PATTERNS):
+                continue
+            # Skip SQL files — loaded at runtime, not imported
+            if f.endswith('.sql'):
+                continue
+            # Skip Next.js special files
+            if filename in ('next-env.d.ts', '_document.tsx', '_app.tsx', 'middleware.ts'):
+                continue
+            
             if in_degrees[f] == 0:
                 if out_degrees[f] == 0:
                     warnings.append({
