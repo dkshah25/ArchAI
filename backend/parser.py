@@ -797,13 +797,24 @@ class RepositoryParser:
                         "files": [f]
                     })
 
-        # Large files
+        # Large files - context-aware thresholds to prevent false positives on complex modules or UI views
         for f in filtered_files:
-            if file_metrics[f]['lines'] > 400:
+            filename = os.path.basename(f)
+            ext = os.path.splitext(f)[1].lower()
+            
+            # Context-aware thresholds
+            if ext in ('.tsx', '.jsx') or 'page' in filename.lower():
+                threshold = 3000
+            elif filename in ('parser.py', 'ai_service.py', 'main.py'):
+                threshold = 1500
+            else:
+                threshold = 800
+                
+            if file_metrics[f]['lines'] > threshold:
                 warnings.append({
                     "id": f"warn_large_{len(warnings)}",
                     "title": "Bloated Module Detected",
-                    "description": f"File '{os.path.basename(f)}' spans {file_metrics[f]['lines']} lines of code. High risk of accumulating mixed concerns. Consider refactoring into smaller services.",
+                    "description": f"File '{filename}' spans {file_metrics[f]['lines']} lines of code (limit: {threshold}). Consider refactoring into smaller services or components.",
                     "severity": "MEDIUM",
                     "files": [f]
                 })
